@@ -1,59 +1,60 @@
-# 🍽️ Restaurante API
+# 🍽️ RestAPI — Sistema de Fluxo de Restaurante
 
-API REST para sistema de fluxo de restaurante com controle de comandas, cardápio e notificações em tempo real.
+API REST para gerenciamento de fluxo de restaurante — controle de comandas, cardápio e notificações em tempo real para cozinha e caixa.
 
-## Stack
-- **.NET 8** — Web API
-- **Entity Framework Core** — ORM
-- **SQL Server** — banco de dados
-- **ASP.NET Core Identity** — autenticação e gestão de usuários
-- **JWT Bearer** — autorização stateless
-- **SignalR** — notificações em tempo real
+> Projeto em desenvolvimento ativo. Sprint atual: API completa → próxima etapa: Front-end React.
 
 ---
 
-## Setup
+## Stack
 
-### 1. Pré-requisitos
-- .NET 8 SDK
-- SQL Server (local ou Docker)
+| Tecnologia | Uso |
+|---|---|
+| .NET 8 | Web API |
+| Entity Framework Core | ORM |
+| SQL Server | Banco de dados |
+| ASP.NET Core Identity | Gestão de usuários e roles |
+| JWT Bearer | Autenticação stateless |
+| SignalR | Notificações em tempo real |
 
-### 2. Criar o projeto e instalar pacotes
+---
+
+## Pré-requisitos
+
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8)
+- SQL Server local ou via Docker
+
+  
+---
+
+## Configuração
+
+### 1. Clonar o repositório
 
 ```bash
-dotnet new webapi -n RestauranteAPI
-cd RestauranteAPI
-
-dotnet add package Microsoft.EntityFrameworkCore.SqlServer
-dotnet add package Microsoft.EntityFrameworkCore.Tools
-dotnet add package Microsoft.AspNetCore.Identity.EntityFrameworkCore
-dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer
-dotnet add package Microsoft.AspNetCore.SignalR
-dotnet add package Swashbuckle.AspNetCore
+git clone https://github.com/Erasmojuniordev/RestAPI.git
+cd RestAPI
 ```
 
-### 3. Configurar appsettings.json
+### 2. Restaurar pacotes
 
-```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Server=localhost;Database=RestauranteDB;Trusted_Connection=True;TrustServerCertificate=True;"
-  },
-  "Jwt": {
-    "Key": "SUA_CHAVE_SECRETA_MIN_32_CARACTERES_AQUI",
-    "Issuer": "RestauranteAPI",
-    "Audience": "RestauranteFront",
-    "ExpiresInHours": 8
-  },
-  "Cors": {
-    "AllowedOrigin": "http://localhost:5173"
-  }
-}
+```bash
+dotnet restore
 ```
 
-> ⚠️ **Nunca commite a chave JWT.** Em produção, use variável de ambiente ou Azure Key Vault.
+### 3. Configurar segredos locais
 
-### 4. Migrations e banco
+Dados sensíveis **nunca ficam no repositório**. Configure via User Secrets:
+
+```bash
+dotnet user-secrets init
+dotnet user-secrets set "Jwt:Key" "SUA_CHAVE_MINIMO_32_CARACTERES"
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "SUA_CONNECTION_STRING"
+```
+
+> O `appsettings.json` contém apenas valores não sensíveis. Em produção, use variáveis de ambiente.
+
+### 4. Aplicar migrations
 
 ```bash
 dotnet ef migrations add InitialCreate
@@ -66,69 +67,158 @@ dotnet ef database update
 dotnet run
 ```
 
-Acesse: `https://localhost:5001/swagger`
+Acesse: `http://localhost:5000/swagger`
 
 ---
 
-## Roles e permissões
+## Autenticação
 
-| Role    | Permissões |
-|---------|-----------|
-| Admin   | Tudo |
-| Garcom  | Abrir comanda, adicionar/remover itens, marcar entregue |
-| Cozinha | Ver painel, mudar EmPreparo → Pronto |
-| Caixa   | Ver comandas, marcar Paga |
+A API usa **JWT Bearer**. Para autenticar no Swagger:
 
-### Usuário admin padrão (apenas dev)
-- Email: `admin@restaurante.com`
-- Senha: `Admin@1234`
+1. Faça login em `POST /api/auth/login`
+2. Copie o `token` da resposta
+3. Clique em **Authorize** no topo do Swagger
+4. Digite: `Bearer SEU_TOKEN`
+
+**Usuário admin padrão** (apenas em Development):
+
+| Campo | Valor |
+|---|---|
+| Email | admin@restaurante.com |
+| Senha | Admin@1234 |
 
 ---
 
-## Fluxo de Status
+## Roles e Permissões
+
+| Role | Permissões |
+|---|---|
+| Admin | Acesso total |
+| Garcom | Abrir comanda, adicionar/remover itens, marcar entregue |
+| Cozinha | Visualizar painel, mudar status EmPreparo → Pronto |
+| Caixa | Visualizar comandas, marcar como Paga |
+
+**Criar usuário:**
+```http
+POST /api/auth/usuarios
+Authorization: Bearer {token_admin}
+
+{
+  "email": "garcom@restaurante.com",
+  "senha": "Senha@1234",
+  "nomeCompleto": "João Silva",
+  "role": "Garcom"
+}
+```
+
+---
+
+## Fluxo de Status da Comanda
 
 ```
-Aberta → Pendente → EmPreparo → Pronto → Entregue → Paga
-           ↘           ↘          ↘
-         Cancelada  Cancelada  (bloqueado)
+Aberta ──→ Pendente ──→ EmPreparo ──→ Pronto ──→ Entregue ──→ Paga
+  │            │              │
+  └──────→ Cancelada ←────────┘
+           (bloqueado a partir de Pronto)
 ```
+
+Transições inválidas retornam `400 Bad Request` automaticamente.
 
 ---
 
-## Endpoints principais
+## Endpoints
 
 ### Auth
-- `POST /api/auth/login` — login, retorna JWT
-- `POST /api/auth/usuarios` — criar usuário (Admin)
+| Método | Rota | Descrição | Role |
+|---|---|---|---|
+| POST | `/api/auth/login` | Login, retorna JWT | Público |
+| POST | `/api/auth/usuarios` | Criar usuário | Admin |
 
 ### Comandas
-- `GET  /api/comandas?status=Pendente` — listar com filtro
-- `GET  /api/comandas/{id}` — detalhes
-- `POST /api/comandas` — abrir comanda
-- `POST /api/comandas/{id}/itens` — adicionar item
-- `DELETE /api/comandas/{id}/itens/{itemId}` — remover item
-- `PATCH /api/comandas/{id}/status` — mudar status
+| Método | Rota | Descrição | Role |
+|---|---|---|---|
+| GET | `/api/comandas` | Listar (filtro por status) | Todos |
+| GET | `/api/comandas/{id}` | Detalhes da comanda | Todos |
+| POST | `/api/comandas` | Abrir comanda | Admin, Garcom |
+| POST | `/api/comandas/{id}/itens` | Adicionar item | Admin, Garcom |
+| DELETE | `/api/comandas/{id}/itens/{itemId}` | Remover item | Admin, Garcom |
+| PATCH | `/api/comandas/{id}/status` | Atualizar status | Conforme role |
 
-### Itens (Cardápio)
-- `GET  /api/itens` — listar (público)
-- `POST /api/itens` — criar (Admin)
-- `PUT  /api/itens/{id}` — atualizar (Admin)
-- `PATCH /api/itens/{id}/disponibilidade` — ativar/desativar (Admin)
-- `DELETE /api/itens/{id}` — deletar (Admin)
+### Cardápio
+| Método | Rota | Descrição | Role |
+|---|---|---|---|
+| GET | `/api/itens` | Listar itens | Público |
+| GET | `/api/itens/{id}` | Detalhes do item | Público |
+| POST | `/api/itens` | Criar item | Admin |
+| PUT | `/api/itens/{id}` | Atualizar item | Admin |
+| PATCH | `/api/itens/{id}/disponibilidade` | Ativar/desativar | Admin |
+| DELETE | `/api/itens/{id}` | Deletar item | Admin |
 
 ---
 
-## SignalR — Hub da Cozinha
+## SignalR — Notificações em Tempo Real
 
-Endpoint: `wss://localhost:5001/hubs/cozinha`
+**Endpoint:** `ws://localhost:5000/hubs/cozinha`
 
-O token JWT deve ser enviado via query string: `?access_token=SEU_TOKEN`
+O token JWT deve ser enviado via query string:
+```
+ws://localhost:5000/hubs/cozinha?access_token=SEU_TOKEN
+```
 
-### Eventos emitidos pelo servidor
+**Eventos emitidos pelo servidor:**
 
-| Evento | Destinatário | Payload |
-|--------|-------------|---------|
-| `NovoPedido` | Cozinha | `{comandaId, mesa, item, quantidade, observacao}` |
-| `StatusAtualizado` | Cozinha | `{comandaId, mesa, statusAnterior, novoStatus}` |
-| `PedidoPronto` | Garcom | `{comandaId, mesa, ...}` |
-| `ComandaProntoParaPagar` | Caixa | `{comandaId, mesa, ...}` |
+| Evento | Destinatário | Quando |
+|---|---|---|
+| `NovoPedido` | Cozinha | Item adicionado à comanda |
+| `StatusAtualizado` | Cozinha | Qualquer mudança de status |
+| `PedidoPronto` | Garcom | Status muda para Pronto |
+| `ComandaProntoParaPagar` | Caixa | Status muda para Entregue |
+
+**Exemplo de conexão no React:**
+```javascript
+import { HubConnectionBuilder } from "@microsoft/signalr";
+
+const connection = new HubConnectionBuilder()
+  .withUrl("http://localhost:5000/hubs/cozinha", {
+    accessTokenFactory: () => token
+  })
+  .withAutomaticReconnect()
+  .build();
+
+connection.on("NovoPedido", (data) => {
+  console.log(`Mesa ${data.mesa} pediu ${data.item}`);
+});
+
+await connection.start();
+```
+
+---
+
+## Estrutura do Projeto
+
+```
+RestAPI/
+├── Controllers/        # Entrada e saída HTTP
+├── Data/               # DbContext e Migrations
+├── DTOs/               # Contratos da API (Input/Output)
+├── Enums/              # StatusComanda
+├── Hubs/               # SignalR
+├── Middleware/         # Tratamento global de erros
+├── Models/             # Entidades do banco
+└── Services/           # Regras de negócio
+    └── Interfaces/
+```
+
+---
+
+## Roadmap
+
+- [x] Modelagem das entidades
+- [x] Autenticação JWT + Identity
+- [x] CRUD de Cardápio
+- [x] Fluxo de Comandas com regras de status
+- [x] Notificações em tempo real com SignalR
+- [ ] Validação de inputs com FluentValidation
+- [ ] Front-end React
+- [ ] Painel da cozinha em tempo real
+- [ ] Relatórios financeiros
