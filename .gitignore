@@ -1,0 +1,17 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+## Secrets — NUNCA commitar
+appsettings.Production.json
+secrets.json
+
+## Migrations geradas localmente (opcional manter no git)
+# Data/Migrations/
+
+## Riders / VS
+.idea/
+*.DotSettings.user
