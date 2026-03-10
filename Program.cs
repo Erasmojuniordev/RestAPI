@@ -1,4 +1,5 @@
 using System.Text;
+using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -105,6 +106,11 @@ builder.Services.AddScoped<IItemService, ItemService>();
 // Controllers + Swagger
 // ──────────────────────────────────────────
 builder.Services.AddControllers();
+
+// ──────────────────────────────────────────
+// FluentValidation
+// ──────────────────────────────────────────
+builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
