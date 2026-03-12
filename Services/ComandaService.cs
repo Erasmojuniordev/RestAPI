@@ -94,12 +94,10 @@ public class ComandaService : IComandaService
 
         if (itemExistente is not null)
         {
-            // Só atualiza — EF já está rastreando essa entidade
             itemExistente.Quantidade += dto.Quantidade;
         }
         else
         {
-            // Novo item
             var novoItem = new ItemComanda
             {
                 ComandaId = comandaId,
@@ -109,14 +107,17 @@ public class ComandaService : IComandaService
                 Observacao = dto.Observacao
             };
             _db.ItensComanda.Add(novoItem);
-            comanda.Itens.Add(novoItem);
+        }
+
+        if (comanda.Status == StatusComanda.Pronto ||
+            comanda.Status == StatusComanda.EmPreparo ||
+            comanda.Status == StatusComanda.Aberta)
+        {
+            comanda.Status = StatusComanda.Pendente;
         }
 
         RecalcularPrecoTotal(comanda);
         comanda.AtualizadoEm = DateTime.UtcNow;
-
-        if (comanda.Status == StatusComanda.Aberta)
-            comanda.Status = StatusComanda.Pendente;
 
         await _db.SaveChangesAsync();
 
@@ -129,7 +130,12 @@ public class ComandaService : IComandaService
             observacao = dto.Observacao
         });
 
-        return MapToDetalheDto(comanda);
+        var comandaAtualizada = await _db.Comandas
+            .Include(c => c.Itens).ThenInclude(i => i.Item)
+            .Include(c => c.AbertoPor)
+            .FirstOrDefaultAsync(c => c.Id == comandaId);
+
+        return MapToDetalheDto(comandaAtualizada!);
     }
 
     public async Task<ComandaDetalheDto> AtualizarStatusAsync(Guid comandaId, StatusComanda novoStatus, string usuarioId)
