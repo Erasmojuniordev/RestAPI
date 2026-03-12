@@ -1,4 +1,4 @@
-using System.Text;
+using AspNetCoreRateLimit;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
@@ -11,8 +11,22 @@ using RestauranteAPI.Middleware;
 using RestauranteAPI.Models;
 using RestauranteAPI.Services;
 using RestauranteAPI.Services.Interfaces;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+
+
+// ──────────────────────────────────────────
+// Rate Limiting — proteção básica contra abuso (ajustar limites em produção)
+// ────────────────────────────────────────
+builder.Services.AddMemoryCache();
+builder.Services.Configure<IpRateLimitOptions>(
+    builder.Configuration.GetSection("IpRateLimiting"));
+builder.Services.AddSingleton<IIpPolicyStore, MemoryCacheIpPolicyStore>();
+builder.Services.AddSingleton<IRateLimitCounterStore, MemoryCacheRateLimitCounterStore>();
+builder.Services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
+builder.Services.AddSingleton<IProcessingStrategy, AsyncKeyLockProcessingStrategy>();
+builder.Services.AddInMemoryRateLimiting();
 
 // ──────────────────────────────────────────
 // Banco de Dados
@@ -150,6 +164,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseMiddleware<ExceptionMiddleware>();
+app.UseIpRateLimiting();
 app.UseHttpsRedirection();
 app.UseCors("FrontEnd");
 app.UseAuthentication();
