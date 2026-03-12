@@ -7,8 +7,8 @@ public interface IComandaService
 {
     Task<IEnumerable<ComandaResumoDto>> ListarAsync(StatusComanda? filtroStatus = null);
     Task<ComandaDetalheDto> ObterPorIdAsync(Guid id);
-    Task<ComandaDetalheDto> AbrirComandaAsync(AbrirComandaDto dto, string usuarioId);
+    Task<ComandaDetalheDto> AbrirAsync(AbrirComandaDto dto, string usuarioId);
     Task<ComandaDetalheDto> AdicionarItemAsync(Guid comandaId, AdicionarItemComandaDto dto);
-    Task<ComandaDetalheDto> AtualizarStatusAsync(Guid comandaId, StatusComanda novoStatus, string usuarioId);
-    Task RemoverItemAsync(Guid comandaId, Guid itemComandaId);
+    Task<ComandaDetalheDto> AtualizarStatusAsync(Guid comandaId, StatusComanda novoStatus);
+    Task<ComandaDetalheDto> RemoverItemAsync(Guid comandaId, Guid itemComandaId);
 }

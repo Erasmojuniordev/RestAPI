@@ -40,4 +40,63 @@ public class Comanda
         return _transicoesPermitidas.TryGetValue(Status, out var permitidos)
             && permitidos.Contains(novoStatus);
     }
+
+    public void AdicionarItem(ItemComanda novoItem)
+    {
+        if (Status == StatusComanda.Paga || Status == StatusComanda.Cancelada)
+            throw new InvalidOperationException("Não é possível adicionar itens a uma comanda encerrada.");
+
+        var existente = Itens.FirstOrDefault(i =>
+            i.ItemId == novoItem.ItemId && i.Observacao == novoItem.Observacao);
+
+        if (existente is not null)
+            existente.Quantidade += novoItem.Quantidade;
+        else
+            Itens.Add(novoItem);
+
+        if (Status == StatusComanda.Aberta ||
+            Status == StatusComanda.EmPreparo ||
+            Status == StatusComanda.Pronto)
+            Status = StatusComanda.Pendente;
+
+        RecalcularPrecoTotal();
+        AtualizadoEm = DateTime.UtcNow;
+    }
+
+    public void RemoverItem(Guid itemComandaId)
+    {
+        if (Status >= StatusComanda.EmPreparo)
+            throw new InvalidOperationException("Não é possível remover itens de uma comanda em preparo ou posterior.");
+
+        var item = Itens.FirstOrDefault(i => i.Id == itemComandaId)
+            ?? throw new KeyNotFoundException("Item não encontrado na comanda.");
+
+        Itens.Remove(item);
+
+        if (!Itens.Any())
+            Status = StatusComanda.Aberta;
+
+        RecalcularPrecoTotal();
+        AtualizadoEm = DateTime.UtcNow;
+    }
+
+    public void TransicionarStatus(StatusComanda novoStatus)
+    {
+        if (!PodeTransicionarPara(novoStatus))
+            throw new InvalidOperationException(
+                $"Transição inválida: {Status} → {novoStatus}.");
+
+        Status = novoStatus;
+        AtualizadoEm = DateTime.UtcNow;
+
+        if (novoStatus == StatusComanda.Paga || novoStatus == StatusComanda.Cancelada)
+            RecalcularPrecoTotal(); // congela o valor final
+    }
+
+    private void RecalcularPrecoTotal()
+    {
+        if (Status == StatusComanda.Paga || Status == StatusComanda.Cancelada)
+            return;
+        PrecoTotal = Itens.Sum(i => i.Quantidade * i.PrecoUnitario);
+    }
 }

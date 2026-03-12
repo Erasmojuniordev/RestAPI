@@ -51,22 +51,25 @@ public class ComandaService : IComandaService
         return MapToDetalheDto(comanda);
     }
 
-    public async Task<ComandaDetalheDto> AbrirComandaAsync(AbrirComandaDto dto, string usuarioId)
+    public async Task<ComandaDetalheDto> AbrirAsync(AbrirComandaDto dto, string userId)
     {
-        // Valida se já existe comanda aberta/ativa para a mesa
         var mesaOcupada = await _db.Comandas.AnyAsync(c =>
             c.NumeroDaMesa == dto.NumeroDaMesa &&
             c.Status != StatusComanda.Paga &&
             c.Status != StatusComanda.Cancelada);
 
         if (mesaOcupada)
-            throw new InvalidOperationException($"Mesa {dto.NumeroDaMesa} já possui uma comanda ativa.");
+            throw new InvalidOperationException($"Mesa {dto.NumeroDaMesa} já possui uma comanda aberta.");
 
         var comanda = new Comanda
         {
+            Id = Guid.NewGuid(),
             NumeroDaMesa = dto.NumeroDaMesa,
+            Status = StatusComanda.Aberta,
             Observacao = dto.Observacao,
-            AbertoPorId = usuarioId
+            AbertoPorId = userId,
+            CriadoEm = DateTime.UtcNow,
+            AtualizadoEm = DateTime.UtcNow,
         };
 
         _db.Comandas.Add(comanda);
@@ -82,145 +85,109 @@ public class ComandaService : IComandaService
             .FirstOrDefaultAsync(c => c.Id == comandaId)
             ?? throw new KeyNotFoundException("Comanda não encontrada.");
 
-        if (comanda.Status == StatusComanda.Paga || comanda.Status == StatusComanda.Cancelada)
-            throw new InvalidOperationException("Não é possível adicionar itens a uma comanda encerrada.");
-
-        var item = await _db.Itens.FirstOrDefaultAsync(i => i.Id == dto.ItemId && i.Disponivel)
+        var item = await _db.Itens
+            .FirstOrDefaultAsync(i => i.Id == dto.ItemId && i.Disponivel)
             ?? throw new KeyNotFoundException("Item não encontrado ou indisponível.");
 
-        var itemExistente = comanda.Itens.FirstOrDefault(i =>
-            i.ItemId == dto.ItemId &&
-            i.Observacao == dto.Observacao);
-
-        if (itemExistente is not null)
+        var novoItem = new ItemComanda
         {
-            itemExistente.Quantidade += dto.Quantidade;
-        }
-        else
-        {
-            var novoItem = new ItemComanda
-            {
-                ComandaId = comandaId,
-                ItemId = item.Id,
-                Quantidade = dto.Quantidade,
-                PrecoUnitario = item.Preco,
-                Observacao = dto.Observacao
-            };
-            _db.ItensComanda.Add(novoItem);
-        }
+            Id = Guid.NewGuid(),
+            ComandaId = comandaId,
+            ItemId = item.Id,
+            Quantidade = dto.Quantidade,
+            PrecoUnitario = item.Preco,
+            Observacao = dto.Observacao,
+        };
 
-        if (comanda.Status == StatusComanda.Pronto ||
-            comanda.Status == StatusComanda.EmPreparo ||
-            comanda.Status == StatusComanda.Aberta)
-        {
-            comanda.Status = StatusComanda.Pendente;
-        }
-
-        RecalcularPrecoTotal(comanda);
-        comanda.AtualizadoEm = DateTime.UtcNow;
+        // Regra de negócio fica no domínio
+        comanda.AdicionarItem(novoItem);
 
         await _db.SaveChangesAsync();
 
-        await _hub.Clients.Group("Cozinha").SendAsync("NovoPedido", new
+        await NotificarCozinhaAsync("NovoPedido", new
         {
             comandaId = comanda.Id,
             mesa = comanda.NumeroDaMesa,
             item = item.Nome,
             quantidade = dto.Quantidade,
-            observacao = dto.Observacao
         });
 
-        var comandaAtualizada = await _db.Comandas
-            .Include(c => c.Itens).ThenInclude(i => i.Item)
-            .Include(c => c.AbertoPor)
-            .FirstOrDefaultAsync(c => c.Id == comandaId);
-
-        return MapToDetalheDto(comandaAtualizada!);
+        return await CarregarDetalheAsync(comandaId);
     }
 
-    public async Task<ComandaDetalheDto> AtualizarStatusAsync(Guid comandaId, StatusComanda novoStatus, string usuarioId)
+    public async Task<ComandaDetalheDto> RemoverItemAsync(Guid comandaId, Guid itemComandaId)
     {
         var comanda = await _db.Comandas
             .Include(c => c.Itens).ThenInclude(i => i.Item)
             .FirstOrDefaultAsync(c => c.Id == comandaId)
             ?? throw new KeyNotFoundException("Comanda não encontrada.");
 
-        if (!comanda.PodeTransicionarPara(novoStatus))
-            throw new InvalidOperationException(
-                $"Transição inválida: {comanda.Status} → {novoStatus}.");
-
-        var statusAnterior = comanda.Status;
-        comanda.Status = novoStatus;
-        comanda.AtualizadoEm = DateTime.UtcNow;
+        comanda.RemoverItem(itemComandaId);
 
         await _db.SaveChangesAsync();
 
-        // Notificações por status
-        await NotificarMudancaStatusAsync(comanda, statusAnterior);
+        return await CarregarDetalheAsync(comandaId);
+    }
+
+    public async Task<ComandaDetalheDto> AtualizarStatusAsync(Guid comandaId, StatusComanda novoStatus)
+    {
+        var comanda = await _db.Comandas
+            .Include(c => c.Itens).ThenInclude(i => i.Item)
+            .Include(c => c.AbertoPor)
+            .FirstOrDefaultAsync(c => c.Id == comandaId)
+            ?? throw new KeyNotFoundException("Comanda não encontrada.");
+
+        comanda.TransicionarStatus(novoStatus);
+
+        await _db.SaveChangesAsync();
+
+        await EnviarNotificacaoStatusAsync(comanda, novoStatus);
 
         return MapToDetalheDto(comanda);
     }
 
-    public async Task RemoverItemAsync(Guid comandaId, Guid itemComandaId)
+    // ── Métodos privados de suporte ──────────────────────────────
+
+    private async Task<ComandaDetalheDto> CarregarDetalheAsync(Guid comandaId)
     {
         var comanda = await _db.Comandas
-            .Include(c => c.Itens)
+            .Include(c => c.Itens).ThenInclude(i => i.Item)
+            .Include(c => c.AbertoPor)
             .FirstOrDefaultAsync(c => c.Id == comandaId)
             ?? throw new KeyNotFoundException("Comanda não encontrada.");
 
-        // Só permite remoção enquanto não estiver em preparo
-        if (comanda.Status >= StatusComanda.EmPreparo)
-            throw new InvalidOperationException("Não é possível remover itens de uma comanda em preparo ou posterior.");
-
-        var itemComanda = comanda.Itens.FirstOrDefault(i => i.Id == itemComandaId)
-            ?? throw new KeyNotFoundException("Item não encontrado na comanda.");
-
-        _db.ItensComanda.Remove(itemComanda);
-        comanda.Itens.Remove(itemComanda);
-        RecalcularPrecoTotal(comanda);
-        comanda.AtualizadoEm = DateTime.UtcNow;
-
-        // Se removeu todos os itens, volta para Aberta
-        if (!comanda.Itens.Any())
-            comanda.Status = StatusComanda.Aberta;
-
-        await _db.SaveChangesAsync();
+        return MapToDetalheDto(comanda);
     }
 
-    // ── Helpers ──────────────────────────────────────────────
-
-    private static void RecalcularPrecoTotal(Comanda comanda)
+    private async Task NotificarCozinhaAsync(string evento, object payload)
     {
-        // Não permite recálculo em comandas já encerradas
-        if (comanda.Status == StatusComanda.Paga ||
-            comanda.Status == StatusComanda.Cancelada)
-            return;
-
-        comanda.PrecoTotal = comanda.Itens.Sum(i => i.Quantidade * i.PrecoUnitario);
+        await _hub.Clients.Group("Cozinha").SendAsync(evento, payload);
     }
 
-    private async Task NotificarMudancaStatusAsync(Comanda comanda, StatusComanda statusAnterior)
+    private async Task EnviarNotificacaoStatusAsync(Comanda comanda, StatusComanda novoStatus)
     {
-        var payload = new
+        await _hub.Clients.Group("Cozinha").SendAsync("StatusAtualizado", new
         {
             comandaId = comanda.Id,
             mesa = comanda.NumeroDaMesa,
-            statusAnterior = statusAnterior.ToString(),
-            novoStatus = comanda.Status.ToString()
-        };
+            status = novoStatus.ToString(),
+        });
 
-        // Pronto → notifica garçom para buscar o pedido
-        if (comanda.Status == StatusComanda.Pronto)
-            await _hub.Clients.Group("Garcom").SendAsync("PedidoPronto", payload);
+        if (novoStatus == StatusComanda.Pronto)
+            await _hub.Clients.Group("Garcom").SendAsync("PedidoPronto", new
+            {
+                comandaId = comanda.Id,
+                mesa = comanda.NumeroDaMesa,
+            });
 
-        // Entregue → notifica caixa que mesa pode pagar
-        if (comanda.Status == StatusComanda.Entregue)
-            await _hub.Clients.Group("Caixa").SendAsync("ComandaProntoParaPagar", payload);
-
-        // Qualquer mudança → cozinha acompanha
-        await _hub.Clients.Group("Cozinha").SendAsync("StatusAtualizado", payload);
+        if (novoStatus == StatusComanda.Entregue)
+            await _hub.Clients.Group("Caixa").SendAsync("ComandaProntoParaPagar", new
+            {
+                comandaId = comanda.Id,
+                mesa = comanda.NumeroDaMesa,
+                precoTotal = comanda.PrecoTotal,
+            });
     }
-
     private static ComandaDetalheDto MapToDetalheDto(Comanda c) => new(
         c.Id,
         c.NumeroDaMesa,
