@@ -20,24 +20,21 @@ public class ComandaService : IComandaService
         _hub = hub;
     }
 
-    public async Task<IEnumerable<ComandaResumoDto>> ListarAsync(StatusComanda? filtroStatus = null)
+    public async Task<IEnumerable<ComandaDetalheDto>> ListarAsync(StatusComanda? status)
     {
-        var query = _db.Comandas.Include(c => c.Itens).AsQueryable();
+        var query = _db.Comandas
+            .Include(c => c.Itens).ThenInclude(i => i.Item)
+            .Include(c => c.AbertoPor)
+            .AsQueryable();
 
-        if (filtroStatus.HasValue)
-            query = query.Where(c => c.Status == filtroStatus.Value);
+        if (status.HasValue)
+            query = query.Where(c => c.Status == status.Value);
 
-        return await query
-            .OrderByDescending(c => c.CriadoEm)
-            .Select(c => new ComandaResumoDto(
-                c.Id,
-                c.NumeroDaMesa,
-                c.Status.ToString(),
-                c.PrecoTotal,
-                c.Itens.Sum(i => i.Quantidade),
-                c.CriadoEm
-            ))
+        var comandas = await query
+            .OrderBy(c => c.CriadoEm)
             .ToListAsync();
+
+        return comandas.Select(MapToDetalheDto);
     }
 
     public async Task<ComandaDetalheDto> ObterPorIdAsync(Guid id)

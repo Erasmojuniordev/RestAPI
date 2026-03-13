@@ -5,7 +5,7 @@ namespace RestauranteAPI.Services.Interfaces;
 
 public interface IComandaService
 {
-    Task<IEnumerable<ComandaResumoDto>> ListarAsync(StatusComanda? filtroStatus = null);
+    Task<IEnumerable<ComandaDetalheDto>> ListarAsync(StatusComanda? filtroStatus = null);
     Task<ComandaDetalheDto> ObterPorIdAsync(Guid id);
     Task<ComandaDetalheDto> AbrirAsync(AbrirComandaDto dto, string usuarioId);
     Task<ComandaDetalheDto> AdicionarItemAsync(Guid comandaId, AdicionarItemComandaDto dto);

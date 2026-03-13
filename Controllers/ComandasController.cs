@@ -40,7 +40,7 @@ public class ComandasController : ControllerBase
     public async Task<IActionResult> Abrir([FromBody] AbrirComandaDto dto)
     {
         var usuarioId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
-        var comanda = await _service.AbrirComandaAsync(dto, usuarioId);
+        var comanda = await _service.AbrirAsync(dto, usuarioId);
         return CreatedAtAction(nameof(ObterPorId), new { id = comanda.Id }, comanda);
     }
 
@@ -68,7 +68,7 @@ public class ComandasController : ControllerBase
     public async Task<IActionResult> AtualizarStatus(Guid id, [FromBody] AtualizarStatusDto dto)
     {
         var usuarioId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
-        var comanda = await _service.AtualizarStatusAsync(id, dto.NovoStatus, usuarioId);
+        var comanda = await _service.AtualizarStatusAsync(id, dto.NovoStatus);
         return Ok(comanda);
     }
 }
