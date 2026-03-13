@@ -1,4 +1,4 @@
-using AspNetCoreRateLimit;
+using System.Text;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
@@ -11,22 +11,8 @@ using RestauranteAPI.Middleware;
 using RestauranteAPI.Models;
 using RestauranteAPI.Services;
 using RestauranteAPI.Services.Interfaces;
-using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
-
-
-// ──────────────────────────────────────────
-// Rate Limiting — proteção básica contra abuso (ajustar limites em produção)
-// ────────────────────────────────────────
-builder.Services.AddMemoryCache();
-builder.Services.Configure<IpRateLimitOptions>(
-    builder.Configuration.GetSection("IpRateLimiting"));
-builder.Services.AddSingleton<IIpPolicyStore, MemoryCacheIpPolicyStore>();
-builder.Services.AddSingleton<IRateLimitCounterStore, MemoryCacheRateLimitCounterStore>();
-builder.Services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
-builder.Services.AddSingleton<IProcessingStrategy, AsyncKeyLockProcessingStrategy>();
-builder.Services.AddInMemoryRateLimiting();
 
 // ──────────────────────────────────────────
 // Banco de Dados
@@ -102,10 +88,11 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontEnd", policy =>
     {
-        policy.WithOrigins(builder.Configuration["Cors:AllowedOrigin"]!)
-              .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials();
+        policy
+            .WithOrigins(builder.Configuration["Cors:AllowedOrigin"] ?? "http://localhost:5173")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials(); // necessário para SignalR
     });
 });
 
@@ -163,9 +150,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseMiddleware<ExceptionMiddleware>();
+app.UseIpRateLimiting();
 app.UseHttpsRedirection();
 app.UseCors("FrontEnd");
-app.UseIpRateLimiting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
