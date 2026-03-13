@@ -24,20 +24,18 @@ public class Comanda
     public ICollection<ItemComanda> Itens { get; set; } = [];
 
     // Regras de transição de status — lógica centralizada no modelo
-    private static readonly Dictionary<StatusComanda, IEnumerable<StatusComanda>> _transicoesPermitidas = new()
+    public bool PodeTransicionarPara(StatusComanda novo) => (Status, novo) switch
     {
-        [StatusComanda.Aberta]    = [StatusComanda.Pendente, StatusComanda.Cancelada],
-        [StatusComanda.Pendente]  = [StatusComanda.EmPreparo, StatusComanda.Cancelada],
-        [StatusComanda.EmPreparo] = [StatusComanda.Pronto, StatusComanda.Cancelada],
-        [StatusComanda.Pronto]    = [StatusComanda.Entregue],
-        [StatusComanda.Entregue]  = [StatusComanda.Paga],
-        [StatusComanda.Paga]      = [],
-        [StatusComanda.Cancelada] = [],
+        (StatusComanda.Aberta, StatusComanda.Pendente) => true,
+        (StatusComanda.Aberta, StatusComanda.Fechada) => true,  // garçom fecha
+        (StatusComanda.Aberta, StatusComanda.Cancelada) => true,
+        (StatusComanda.Pendente, StatusComanda.EmPreparo) => true,
+        (StatusComanda.Pendente, StatusComanda.Cancelada) => true,
+        (StatusComanda.EmPreparo, StatusComanda.Pronto) => true,
+        (StatusComanda.EmPreparo, StatusComanda.Cancelada) => true,
+        (StatusComanda.Pronto, StatusComanda.Aberta) => true,  // loop — cozinha entrega
+        (StatusComanda.Pronto, StatusComanda.Fechada) => true,  // garçom fecha direto
+        (StatusComanda.Fechada, StatusComanda.Paga) => true,
+        _ => false
     };
-
-    public bool PodeTransicionarPara(StatusComanda novoStatus)
-    {
-        return _transicoesPermitidas.TryGetValue(Status, out var permitidos)
-            && permitidos.Contains(novoStatus);
-    }
 }

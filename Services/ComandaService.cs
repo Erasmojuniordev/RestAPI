@@ -213,9 +213,9 @@ public class ComandaService : IComandaService
         if (comanda.Status == StatusComanda.Pronto)
             await _hub.Clients.Group("Garcom").SendAsync("PedidoPronto", payload);
 
-        // Entregue → notifica caixa que mesa pode pagar
-        if (comanda.Status == StatusComanda.Entregue)
-            await _hub.Clients.Group("Caixa").SendAsync("ComandaProntoParaPagar", payload);
+        // Fechada → notifica caixa que mesa pode pagar
+        if (comanda.Status == StatusComanda.Fechada)
+            await _hub.Clients.Group("Caixa").SendAsync("ComandaFechada", payload);
 
         // Qualquer mudança → cozinha acompanha
         await _hub.Clients.Group("Cozinha").SendAsync("StatusAtualizado", payload);

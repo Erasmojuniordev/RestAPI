@@ -1,4 +1,3 @@
-using System.Text;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
@@ -11,6 +10,8 @@ using RestauranteAPI.Middleware;
 using RestauranteAPI.Models;
 using RestauranteAPI.Services;
 using RestauranteAPI.Services.Interfaces;
+using System.Text;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -107,6 +108,12 @@ builder.Services.AddScoped<IItemService, ItemService>();
 // ──────────────────────────────────────────
 builder.Services.AddControllers();
 
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
+
 // ──────────────────────────────────────────
 // FluentValidation
 // ──────────────────────────────────────────
@@ -150,7 +157,6 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseMiddleware<ExceptionMiddleware>();
-app.UseIpRateLimiting();
 app.UseHttpsRedirection();
 app.UseCors("FrontEnd");
 app.UseAuthentication();

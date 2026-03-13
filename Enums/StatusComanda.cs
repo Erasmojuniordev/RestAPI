@@ -6,7 +6,7 @@ public enum StatusComanda
     Pendente = 2,
     EmPreparo = 3,
     Pronto = 4,
-    Entregue = 5,
+    Fechada = 5,
     Paga = 6,
     Cancelada = 7
 }
