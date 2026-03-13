@@ -86,6 +86,9 @@ public class ComandaService : IComandaService
             .FirstOrDefaultAsync(i => i.Id == dto.ItemId && i.Disponivel)
             ?? throw new KeyNotFoundException("Item não encontrado ou indisponível.");
 
+        var itemExistente = comanda.Itens.FirstOrDefault(i =>
+            i.ItemId == dto.ItemId && i.Observacao == dto.Observacao);
+
         var novoItem = new ItemComanda
         {
             Id = Guid.NewGuid(),
@@ -96,7 +99,11 @@ public class ComandaService : IComandaService
             Observacao = dto.Observacao,
         };
 
-        // Regra de negócio fica no domínio
+        // Só registra no EF se for item novo — deduplicação é tratada no model
+        if (itemExistente is null)
+            _db.ItensComanda.Add(novoItem);
+
+        // Model aplica regras de negócio e recalcula preço
         comanda.AdicionarItem(novoItem);
 
         await _db.SaveChangesAsync();

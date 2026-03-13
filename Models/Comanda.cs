@@ -51,8 +51,7 @@ public class Comanda
 
         if (existente is not null)
             existente.Quantidade += novoItem.Quantidade;
-        else
-            Itens.Add(novoItem);
+        // else — o service já registrou no EF via _db.ItensComanda.Add
 
         if (Status == StatusComanda.Aberta ||
             Status == StatusComanda.EmPreparo ||
